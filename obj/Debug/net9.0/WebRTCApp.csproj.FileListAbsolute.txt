@@ -30,3 +30,4 @@ D:\Uni\WebRTCApp\obj\Debug\net9.0\refint\WebRTCApp.dll
 D:\Uni\WebRTCApp\obj\Debug\net9.0\WebRTCApp.pdb
 D:\Uni\WebRTCApp\obj\Debug\net9.0\WebRTCApp.genruntimeconfig.cache
 D:\Uni\WebRTCApp\obj\Debug\net9.0\ref\WebRTCApp.dll
+D:\Uni\WebRTCApp\obj\Debug\net9.0\WebRTCApp.sourcelink.json
