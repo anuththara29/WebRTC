@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Video Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h2 {
+            color: #333;
+        }
+
+        .video-container {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        video {
+            width: 45%;
+            max-width: 500px;
+            border-radius: 10px;
+            border: 2px solid #007bff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .controls {
+            margin-top: 20px;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            margin: 5px;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #endCall {
+            background-color: #dc3545;
+        }
+
+        #endCall:hover {
+            background-color: #b52a3a;
+        }
+    </style>
+</head>
+<body>
+    <h2>WebRTC Video Chat</h2>
+
+    <div class="video-container">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+    </div>
+
+    <div class="controls">
+        <button id="startCall">Start Call</button>
+        <button id="endCall">End Call</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/simple-peer/simplepeer.min.js"></script>
+    <script>
+        const connection = new signalR.HubConnectionBuilder()
+            .withUrl("http://localhost:5165/chathub")
+            .build();
+
+        let peer;
+        let localStream;
+        let localVideo = document.getElementById("localVideo");
+        let remoteVideo = document.getElementById("remoteVideo");
+
+        document.getElementById("startCall").addEventListener("click", startCall);
+        document.getElementById("endCall").addEventListener("click", endCall);
+
+        connection.start()
+            .then(() => console.log("Connected to SignalR"))
+            .catch(err => console.error("SignalR Connection Error:", err));
+
+        function startCall() {
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                .then(stream => {
+                    localStream = stream;
+                    localVideo.srcObject = stream;
+
+                    peer = new SimplePeer({ initiator: location.hash === "#caller", trickle: false });
+                    peer.addStream(stream);
+
+                    peer.on("signal", data => {
+                        console.log("Sending Signal:", data);
+                        connection.invoke("SendOffer", "user1", JSON.stringify(data));
+                    });
+
+                    peer.on("stream", stream => {
+                        console.log("Receiving Remote Stream");
+                        remoteVideo.srcObject = stream;
+                    });
+
+                    connection.on("ReceiveOffer", (user, offer) => {
+                        console.log("Received Offer:", offer);
+                        peer.signal(JSON.parse(offer));
+                    });
+
+                    connection.on("ReceiveAnswer", (user, answer) => {
+                        console.log("Received Answer:", answer);
+                        peer.signal(JSON.parse(answer));
+                    });
+
+                    peer.on("connect", () => {
+                        console.log("Peer connection established.");
+                    });
+
+                    peer.on("error", err => {
+                        console.error("Peer error:", err);
+                    });
+                })
+                .catch(error => console.error("Error accessing media devices:", error));
+        }
+
+        function endCall() {
+            if (peer) {
+                peer.destroy();
+                peer = null;
+            }
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            localVideo.srcObject = null;
+            remoteVideo.srcObject = null;
+        }
+    </script>
+</body>
+</html>

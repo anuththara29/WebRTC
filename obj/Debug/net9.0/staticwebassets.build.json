@@ -1,0 +1,12 @@
+{
+  "Version": 1,
+  "Hash": "F6k54Ba3n/M9snsXSvf/t3QooqMdJ1BVBvMU2iMnLLE=",
+  "Source": "WebRTCApp",
+  "BasePath": "_content/WebRTCApp",
+  "Mode": "Default",
+  "ManifestType": "Build",
+  "ReferencedProjectsConfiguration": [],
+  "DiscoveryPatterns": [],
+  "Assets": [],
+  "Endpoints": []
+}
