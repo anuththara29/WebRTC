@@ -2,34 +2,26 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using System.Net.WebSockets;
+using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container
-builder.Services.AddControllersWithViews();  // Add MVC Controllers
-builder.Services.AddSignalR();  // Add SignalR services
-
-// Add CORS policy to allow frontend access
+builder.Services.AddControllersWithViews(); // Keep MVC if needed
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAllOrigins",
         policy => policy
-            .WithOrigins("http://127.0.0.1:5500")  
+            .WithOrigins("http://127.0.0.1:5500")
             .AllowAnyMethod()
             .AllowAnyHeader()
             .AllowCredentials());
 });
 
-// Add authorization services
-builder.Services.AddAuthorization(); 
-
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
-{
     app.UseDeveloperExceptionPage();
-}
 else
 {
     app.UseExceptionHandler("/Home/Error");
@@ -38,20 +30,66 @@ else
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
-// Use CORS with the policy defined 
 app.UseCors("AllowAllOrigins");
 
-// Use routing for controllers and SignalR endpoints
 app.UseRouting();
 
-// Add the authorization middleware
-app.UseAuthorization();
+app.UseWebSockets(); 
 
-// Map controllers
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path == "/ws")
+    {
+        if (context.WebSockets.IsWebSocketRequest)
+        {
+            var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+            await EchoLoop(webSocket); // Handle messages here
+        }
+        else
+        {
+            context.Response.StatusCode = 400;
+        }
+    }
+    else
+    {
+        await next();
+    }
+});
+
 app.MapControllers();
 
-// Map SignalR hub route
-app.MapHub<ChatHub>("/chathub");
-
 app.Run();
+
+static async Task EchoLoop(System.Net.WebSockets.WebSocket socket)
+{
+    var buffer = new byte[1024 * 4];
+    var clients = new List<System.Net.WebSockets.WebSocket> { socket };
+
+    while (socket.State == System.Net.WebSockets.WebSocketState.Open)
+    {
+        var result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+        if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Text)
+        {
+            var msg = Encoding.UTF8.GetString(buffer, 0, result.Count);
+
+            // Broadcast to all connected clients
+            foreach (var client in clients.ToList())
+            {
+                if (client.State == System.Net.WebSockets.WebSocketState.Open)
+                {
+                    await client.SendAsync(
+                        new ArraySegment<byte>(Encoding.UTF8.GetBytes(msg)),
+                        System.Net.WebSockets.WebSocketMessageType.Text,
+                        true,
+                        CancellationToken.None
+                    );
+                }
+            }
+        }
+        else if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close)
+        {
+            clients.Remove(socket);
+            await socket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, "Closing", CancellationToken.None);
+        }
+    }
+}

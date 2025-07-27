@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebRTC Video Chat</title>
+    <title>WebRTC Video Chat With WebSocket</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -63,35 +63,39 @@
 </head>
 <body>
     <h2>WebRTC Video Chat</h2>
-
     <div class="video-container">
         <video id="localVideo" autoplay playsinline muted></video>
         <video id="remoteVideo" autoplay playsinline></video>
     </div>
-
     <div class="controls">
         <button id="startCall">Start Call</button>
         <button id="endCall">End Call</button>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/simple-peer/simplepeer.min.js"></script>
     <script>
-        const connection = new signalR.HubConnectionBuilder()
-            .withUrl("http://localhost:5165/chathub")
-            .build();
+        const socket = new WebSocket("ws://localhost:5165/ws");
 
         let peer;
         let localStream;
-        let localVideo = document.getElementById("localVideo");
-        let remoteVideo = document.getElementById("remoteVideo");
+        const localVideo = document.getElementById("localVideo");
+        const remoteVideo = document.getElementById("remoteVideo");
+
+        socket.onopen = () => {
+            console.log("WebSocket connected.");
+        };
+
+        socket.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            if (message.type === "signal") {
+                if (peer) {
+                    peer.signal(message.data);
+                }
+            }
+        };
 
         document.getElementById("startCall").addEventListener("click", startCall);
         document.getElementById("endCall").addEventListener("click", endCall);
-
-        connection.start()
-            .then(() => console.log("Connected to SignalR"))
-            .catch(err => console.error("SignalR Connection Error:", err));
 
         function startCall() {
             navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -99,38 +103,29 @@
                     localStream = stream;
                     localVideo.srcObject = stream;
 
-                    peer = new SimplePeer({ initiator: location.hash === "#caller", trickle: false });
-                    peer.addStream(stream);
+                    peer = new SimplePeer({
+                        initiator: location.hash === "#caller",
+                        trickle: false,
+                        stream: stream
+                    });
 
                     peer.on("signal", data => {
-                        console.log("Sending Signal:", data);
-                        connection.invoke("SendOffer", "user1", JSON.stringify(data));
+                        socket.send(JSON.stringify({ type: "signal", data }));
                     });
 
                     peer.on("stream", stream => {
-                        console.log("Receiving Remote Stream");
                         remoteVideo.srcObject = stream;
                     });
 
-                    connection.on("ReceiveOffer", (user, offer) => {
-                        console.log("Received Offer:", offer);
-                        peer.signal(JSON.parse(offer));
-                    });
-
-                    connection.on("ReceiveAnswer", (user, answer) => {
-                        console.log("Received Answer:", answer);
-                        peer.signal(JSON.parse(answer));
-                    });
-
                     peer.on("connect", () => {
-                        console.log("Peer connection established.");
+                        console.log("Peer connected.");
                     });
 
                     peer.on("error", err => {
                         console.error("Peer error:", err);
                     });
                 })
-                .catch(error => console.error("Error accessing media devices:", error));
+                .catch(err => console.error("Media error:", err));
         }
 
         function endCall() {
